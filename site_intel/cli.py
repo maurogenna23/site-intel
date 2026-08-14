@@ -112,11 +112,13 @@ def run_one(
     return None, "El pipeline terminó sin producir nada.", time.perf_counter() - started
 
 
-def run_comparison(args: argparse.Namespace, backend: ChatBackend, printer: Printer) -> int:
+def run_comparison(
+    args: argparse.Namespace, backend: ChatBackend, printer: Printer, check_credentials: bool = True
+) -> int:
     """Same URL, same pipeline, several models, one table at the end."""
     keys = [key.strip() for key in args.compare.split(",") if key.strip()]
     models = [get_model(key) for key in keys]
-    unavailable = [model for model in models if not model.available]
+    unavailable = [model for model in models if check_credentials and not model.available]
     if unavailable:
         printer.error(
             "sin credenciales para: " + ", ".join(model.label for model in unavailable)
@@ -166,14 +168,18 @@ def main(argv: Sequence[str] | None = None, backend: ChatBackend | None = None) 
         print("error: falta la URL (o usá --models)", file=sys.stderr)
         return 2
 
+    # A caller that supplies its own backend has taken responsibility for the
+    # transport, so the credential check does not apply to it. That is what the
+    # tests do, and it keeps them runnable on a machine with no keys at all.
+    check_credentials = backend is None
     backend = backend or default_backend()
     printer = Printer(quiet=args.quiet)
 
     if args.compare:
-        return run_comparison(args, backend, printer)
+        return run_comparison(args, backend, printer, check_credentials)
 
     model = get_model(args.model)
-    if not model.available:
+    if check_credentials and not model.available:
         printer.error(
             f"{model.label} no está disponible: falta {model.requires_env or 'Ollama corriendo'}."
         )

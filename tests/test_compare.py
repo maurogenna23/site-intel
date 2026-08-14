@@ -118,10 +118,7 @@ def offline(monkeypatch: pytest.MonkeyPatch):
     )
 
 
-def test_compare_writes_one_file_per_model_plus_the_table(
-    offline, tmp_path: Path, capsys, monkeypatch
-) -> None:
-    monkeypatch.setattr(type(GPT), "available", property(lambda self: True))
+def test_compare_writes_one_file_per_model_plus_the_table(offline, tmp_path: Path, capsys) -> None:
     backend = ScriptedBackend(
         [links_reply(f"{BASE}/nosotros"), facts_reply(), links_reply(f"{BASE}/nosotros"), facts_reply()]
     )
@@ -138,10 +135,11 @@ def test_compare_writes_one_file_per_model_plus_the_table(
     assert "| Modelo |" in capsys.readouterr().out  # the table goes to stdout
 
 
-def test_compare_refuses_models_without_credentials(offline, tmp_path: Path) -> None:
-    code = cli.main(
-        [BASE, "--out", str(tmp_path / "x.md"), "--compare", "gpt-4.1-mini,groq-oss"],
-        backend=ScriptedBackend([]),
-    )
-    # groq-oss has no key in the test environment, so nothing runs and nothing is written.
-    assert code == 1 or not list(tmp_path.glob("*.md"))
+def test_compare_refuses_models_without_credentials(offline, tmp_path: Path, monkeypatch) -> None:
+    """The real entry point builds its own backend, and then credentials matter."""
+    monkeypatch.setattr(cli, "default_backend", lambda: ScriptedBackend([]))
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+
+    code = cli.main([BASE, "--out", str(tmp_path / "x.md"), "--compare", "gpt-4.1-mini,groq-oss"])
+    assert code == 1
+    assert not list(tmp_path.glob("*.md"))
