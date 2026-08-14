@@ -1,7 +1,5 @@
 # site-intel
 
-[![ci](https://github.com/maurogenna23/site-intel/actions/workflows/ci.yml/badge.svg)](https://github.com/maurogenna23/site-intel/actions/workflows/ci.yml)
-
 Give it a company URL, get back a sales-ready dossier in Markdown: what they do,
 who they sell to, how they work, what signals are worth acting on, and an angle
 for the first message — plus the same information as structured fields for a CRM.
