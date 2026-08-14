@@ -16,7 +16,7 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
-from site_intel import pipeline, report
+from site_intel import compare, pipeline, report
 from site_intel.config import (
     DEFAULT_MODEL,
     MODELS_BY_KEY,
@@ -112,6 +112,49 @@ def run_one(
     return None, "El pipeline terminó sin producir nada.", time.perf_counter() - started
 
 
+def run_comparison(args: argparse.Namespace, backend: ChatBackend, printer: Printer) -> int:
+    """Same URL, same pipeline, several models, one table at the end."""
+    keys = [key.strip() for key in args.compare.split(",") if key.strip()]
+    models = [get_model(key) for key in keys]
+    unavailable = [model for model in models if not model.available]
+    if unavailable:
+        printer.error(
+            "sin credenciales para: " + ", ".join(model.label for model in unavailable)
+        )
+        return 1
+
+    attempts: list[compare.Attempt] = []
+    for model in models:
+        printer.note(f"\n=== {model.label} ===")
+        # The dossier is streamed to stderr here: stdout is for the table, and
+        # printing four dossiers to stdout would bury it.
+        dossier, error, seconds = run_one(
+            args.url, model, backend, printer, use_cache=not args.no_cache, echo=False
+        )
+        attempts.append(compare.Attempt(model, dossier, error, seconds))
+        if dossier is None:
+            printer.error(error)
+            continue
+        destination = (args.out or default_output(args.url)).with_name(
+            f"{(args.out or default_output(args.url)).stem}-{model.key}.md"
+        )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(report.render(dossier, model), encoding="utf-8")
+        printer.note(report.summary_line(dossier, model, seconds))
+        printer.note(f"escrito en {destination}")
+
+    table = compare.render(normalise(args.url), attempts)
+    comparison_path = (args.out or default_output(args.url)).with_name(
+        f"{(args.out or default_output(args.url)).stem}-comparacion.md"
+    )
+    comparison_path.parent.mkdir(parents=True, exist_ok=True)
+    comparison_path.write_text(table, encoding="utf-8")
+
+    print(f"\n{compare.table(attempts)}")
+    printer.note(f"\ncomparación escrita en {comparison_path}")
+    return 0 if any(attempt.ok for attempt in attempts) else 1
+
+
 def main(argv: Sequence[str] | None = None, backend: ChatBackend | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -125,6 +168,10 @@ def main(argv: Sequence[str] | None = None, backend: ChatBackend | None = None) 
 
     backend = backend or default_backend()
     printer = Printer(quiet=args.quiet)
+
+    if args.compare:
+        return run_comparison(args, backend, printer)
+
     model = get_model(args.model)
     if not model.available:
         printer.error(

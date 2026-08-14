@@ -9,5 +9,6 @@ __pycache__/
 
 out/*.md
 !out/.gitkeep
+!out/ejemplo/
 
 .DS_Store
